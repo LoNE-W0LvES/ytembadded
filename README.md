@@ -11,8 +11,9 @@ download links from your logged-in Udvash account.
 .\run_library.ps1 -Local     # this PC only
 ```
 
-The first run creates `.venv`, installs `requirements.txt` and sets up the database. Later runs
-just start the app. If Windows blocks the script:
+The first run creates `.venv`, installs `requirements.txt`, installs FFmpeg and Node.js with winget
+if they're missing (needed for 720p YouTube downloads) and sets up the database. Later runs just
+start the app. You need Python 3.10+ and Chrome. If Windows blocks the script:
 `powershell -ExecutionPolicy Bypass -File .\run_library.ps1`
 
 Put a password in `app_password.txt` (next to the script) to require a login from other devices.

@@ -4,8 +4,8 @@
 #   .\run_library.ps1 -Local     this PC only (http://localhost:8000)
 #   .\run_library.ps1 -Port 8001 -NoBrowser
 #
-# First run: creates .venv, installs requirements.txt and sets up the Chrome extension. Later runs skip that unless
-# something changed (requirements.txt, the extension) or the venv is missing/broken.
+# First run: creates .venv, installs requirements.txt, FFmpeg and Node.js, and sets up the Chrome extension.
+# Later runs skip all that unless something changed or is missing.
 # If Windows refuses to run scripts:  powershell -ExecutionPolicy Bypass -File .\run_library.ps1
 param(
     [switch]$Local,
@@ -56,7 +56,28 @@ if ($want -ne $have -or $LASTEXITCODE -ne 0) {
     Write-Host "Libraries already installed." -ForegroundColor DarkGray
 }
 
-# 3. Chrome extension (the link feeder). Chrome only takes extensions from outside the Web Store
+# 3. FFmpeg and Node.js, for 720p YouTube downloads: FFmpeg joins YouTube's separate video and
+# sound, and yt-dlp runs YouTube's player code with Node.js. Installed with winget when missing
+# (winget shows its own license prompts the first time).
+$wingetLinks = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"  # where web settings look for ffmpeg
+$tools = @(
+    @{ Name = "FFmpeg"; Id = "Gyan.FFmpeg"; Found = { (Test-Path (Join-Path $wingetLinks "ffmpeg.exe")) -or (Get-Command ffmpeg -ErrorAction SilentlyContinue) } },
+    @{ Name = "Node.js"; Id = "OpenJS.NodeJS.LTS"; Found = { (Get-Command node -ErrorAction SilentlyContinue) -or (Test-Path "$env:ProgramFiles\nodejs\node.exe") } }
+)
+foreach ($t in $tools) {
+    if (& $t.Found) { continue }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Host "$($t.Name) is missing and winget isn't available: install it yourself for 720p YouTube downloads." -ForegroundColor Yellow
+        continue
+    }
+    Write-Host "Installing $($t.Name) (needed for 720p YouTube downloads) ..." -ForegroundColor Cyan
+    winget install --id $t.Id --exact
+    if ($LASTEXITCODE -ne 0) { Write-Host "Couldn't install $($t.Name); 720p YouTube downloads won't work until it is." -ForegroundColor Yellow }
+}
+# A fresh install only reaches new programs through PATH; give the app the updated one.
+$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+
+# 4. Chrome extension (the link feeder). Chrome only takes extensions from outside the Web Store
 # through "Load unpacked", clicked once by hand; this keeps a copy in a fixed folder up to date
 # and opens Chrome's extensions page when there's something to click.
 $extSrc = Join-Path $PSScriptRoot "feeder-extension"
@@ -84,12 +105,12 @@ if ($firstInstall -or (& $py -c $hashDir $extSrc) -ne (& $py -c $hashDir $extDes
     if ($chrome -and -not $NoBrowser) { Start-Process $chrome "chrome://extensions" }
 }
 
-# 4. Database tables (does nothing when they're up to date)
+# 5. Database tables (does nothing when they're up to date)
 Set-Location (Join-Path $PSScriptRoot "web")
 & $py manage.py migrate --noinput -v 0
 if ($LASTEXITCODE -ne 0) { throw "Database setup failed." }
 
-# 5. Run
+# 6. Run
 if (-not $Local) {
     if (-not (Test-Path (Join-Path $PSScriptRoot "app_password.txt"))) {
         Write-Host "No app_password.txt: anyone on this network can open the app." -ForegroundColor Yellow
