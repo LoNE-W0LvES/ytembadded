@@ -1,0 +1,47 @@
+{% extends "library/base.html" %}
+{% block title %}Opening note · {{ lec.title }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:60px auto;text-align:center">
+  <div style="font-size:34px">📄</div>
+  <h2 style="margin:8px 0 4px;font-size:17px">{{ lec.title }}</h2>
+  <div class="muted" style="font-size:13px">{{ lec.subject }} · {{ lec.chapter }}</div>
+  <p id="msg" style="margin:18px 0 6px">Getting the PDF…</p>
+  <div class="bar" style="height:6px"><i id="bar"></i></div>
+  <p class="muted" id="sub" style="font-size:12.5px;min-height:1.4em"></p>
+  <p style="margin-top:14px"><a class="btn small" href="?online=1">Open the online link instead</a></p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Shows the note as soon as it has been downloaded (the app moved it to the front of the queue).
+  const mb = b => (b / 1048576).toFixed(1) + " MB";
+  const msg = document.getElementById("msg"), sub = document.getElementById("sub"), bar = document.getElementById("bar");
+  async function poll() {
+    let s;
+    try { s = await (await fetch("{% url 'api_note_state' lec.pk %}")).json(); }
+    catch { msg.textContent = "The app isn't responding — retrying…"; return setTimeout(poll, 3000); }
+    sub.textContent = "";
+    if (s.state === "done") { msg.textContent = "Downloaded — opening…"; bar.style.width = "100%"; location.reload(); return; }
+    if (s.state === "active") {
+      msg.textContent = "Downloading…";
+      bar.style.width = s.size ? (s.got * 100 / s.size) + "%" : "5%";
+      sub.textContent = s.size ? `${mb(s.got)} of ${mb(s.size)}` : (s.note || "");
+    } else if (s.state === "queued" && s.retry_at) {
+      msg.textContent = "This note's storage server is unreachable right now.";
+      sub.textContent = "It will be retried at " + new Date(s.retry_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ".";
+    } else if (s.state === "queued" && s.needs_link) {
+      const live = s.feeder_ago != null && s.feeder_ago < 90;
+      msg.textContent = "Getting a fresh download link from Udvash…";
+      sub.textContent = live ? "" : "Waiting for the link feeder — the Chrome extension opens its Udvash tab within about 30 seconds.";
+    } else if (s.state === "queued") {
+      msg.textContent = "Starting download…";
+    } else if (s.state === "failed") {
+      msg.textContent = "Download failed: " + (s.error || "unknown error");
+      sub.innerHTML = '<a href="">Try again</a>';
+      return;
+    }
+    setTimeout(poll, 1000);
+  }
+  poll();
+</script>
+{% endblock %}

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Course Library{% endblock %}</title>
+  <style>
+    :root { --bg:#0f0f10; --panel:#18181b; --panel2:#222226; --line:#2e2e33; --fg:#ececf1; --muted:#9a9aa3;
+            --accent:#ff2d55; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --info:#3b82f6; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, "Segoe UI", "Nirmala UI", sans-serif; }
+    a { color:inherit; }
+    header { position:sticky; top:0; z-index:5; background:rgba(15,15,16,.92); backdrop-filter:blur(6px);
+             border-bottom:1px solid var(--line); padding:10px 16px; display:flex; gap:16px; align-items:center; }
+    header .brand { font-weight:700; text-decoration:none; }
+    header nav { display:flex; gap:12px; margin-left:auto; }
+    header nav a { color:var(--muted); text-decoration:none; }
+    header nav a:hover { color:var(--fg); }
+    main { max-width:1200px; margin:0 auto; padding:16px; }
+    .btn { display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border-radius:7px; border:1px solid var(--line);
+           background:var(--panel2); color:var(--fg); cursor:pointer; text-decoration:none; font:inherit; white-space:nowrap; }
+    .btn:hover { border-color:#45454d; }
+    .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+    .btn.small { padding:4px 9px; font-size:12.5px; }
+    .btn:disabled { opacity:.45; cursor:not-allowed; }
+    input, select { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:7px; padding:7px 10px; font:inherit; }
+    .muted { color:var(--muted); }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
+    .badge { display:inline-block; padding:1px 7px; border-radius:99px; font-size:11.5px; background:var(--panel2); color:var(--muted); white-space:nowrap; }
+    .badge.done { background:rgba(34,197,94,.15); color:var(--ok); }
+    .badge.queued { background:rgba(245,158,11,.15); color:var(--warn); }
+    .badge.downloading { background:rgba(59,130,246,.15); color:var(--info); }
+    .badge.failed { background:rgba(239,68,68,.15); color:var(--bad); }
+    .bar { height:4px; background:var(--panel2); border-radius:3px; overflow:hidden; margin-top:4px; }
+    .bar > i { display:block; height:100%; background:var(--info); width:0; transition:width .5s; }
+    .msg { padding:10px 12px; border-radius:8px; margin-bottom:12px; }
+    .msg.ok { background:rgba(34,197,94,.12); color:var(--ok); }
+    .msg.err { background:rgba(239,68,68,.12); color:var(--bad); }
+    code { overflow-wrap:anywhere; }
+    @media (max-width:760px) {
+      header { padding:8px 12px; gap:10px; }
+      header nav { gap:10px; font-size:13px; }
+      main { padding:12px; }
+      .btn { padding:9px 13px; }
+      .btn.small { padding:7px 11px; font-size:13px; }
+      input, select { font-size:16px; }  /* below 16px, phones zoom the page in when a field is tapped */
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header>
+    <a class="brand" href="{% url 'index' %}">▶ Course Library</a>
+    <nav>
+      <a href="{% url 'index' %}">Lectures</a>
+    </nav>
+  </header>
+  <main>{% csrf_token %}{% block content %}{% endblock %}</main>
+  <script>
+    const CSRF = document.querySelector("[name=csrfmiddlewaretoken]").value;
+    async function post(url, data) {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF },
+                                   body: JSON.stringify(data || {}) });
+      return r.json();
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

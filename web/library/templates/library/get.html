@@ -1,0 +1,60 @@
+{% extends "library/base.html" %}
+{% block title %}Download · {{ lec.title }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:60px auto;text-align:center">
+  <div style="font-size:34px">📥</div>
+  <h2 style="margin:8px 0 4px;font-size:17px">{{ lec.title }}</h2>
+  <div class="muted" style="font-size:13px">{{ lec.subject }} · {{ lec.chapter }} · {% if kind == "pdf" %}note PDF{% elif kind == "video360" %}video · 360p straight from YouTube{% else %}video{% endif %}</div>
+  <p id="msg" style="margin:18px 0 6px">Getting it ready…</p>
+  <div class="bar" style="height:6px"><i id="bar"></i></div>
+  <p class="muted" id="sub" style="font-size:12.5px;min-height:1.4em"></p>
+  <p id="more" style="margin-top:14px"></p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Downloads to this device: waits for a fresh Udvash link (or, for YouTube videos, for the server
+  // to fetch and merge the video), then hands the file to the browser's own downloads.
+  const msg = document.getElementById("msg"), sub = document.getElementById("sub"),
+        bar = document.getElementById("bar"), more = document.getElementById("more");
+  async function poll() {
+    let s;
+    try { s = await (await fetch("{% url 'api_get' lec.pk kind %}")).json(); }
+    catch { msg.textContent = "The app isn't responding — retrying…"; return setTimeout(poll, 3000); }
+    sub.textContent = "";
+    if (s.state === "ready") {
+      bar.style.width = "100%";
+      msg.textContent = "Your download has started — check your browser's downloads.";
+      if (s.direct) {
+        // Straight from Udvash's storage. Some browsers play/show such a link instead of saving it.
+        sub.textContent = "Downloading straight from {% if kind == "video360" %}YouTube{% else %}Udvash{% endif %} — it doesn't go through the app's PC.";
+        more.innerHTML = s.relay ? `If it opened instead of downloading, <a href="${s.relay}">download it through the app</a>.`
+                                 : `<a href="${s.url}">Didn't start? Click here</a>`;
+      } else {
+        more.innerHTML = `<a href="${s.url}">Didn't start? Click here</a>`;
+      }
+      location.href = s.url;
+      return;
+    }
+    if (s.state === "resolving") {
+      msg.textContent = "Getting the download link from YouTube…";
+      bar.style.width = "30%";
+    } else if (s.state === "link") {
+      const live = s.feeder_ago != null && s.feeder_ago < 90;
+      msg.textContent = "Getting a fresh download link from Udvash…";
+      bar.style.width = "5%";
+      sub.textContent = live ? "" : "Waiting for the link feeder — the Chrome extension on the app's PC opens its Udvash tab within about 30 seconds.";
+    } else if (s.state === "preparing") {
+      msg.textContent = "Preparing the video on the app's PC…";
+      bar.style.width = (s.pct || 2) + "%";
+      sub.textContent = `${s.pct || 0}%${s.speed ? " · " + s.speed : ""} — keep this page open; it downloads to this device when ready, then the PC's copy is deleted.`;
+    } else if (s.state === "failed") {
+      msg.textContent = "Couldn't get it: " + (s.error || "unknown error");
+      more.innerHTML = '<a href="">Try again</a>';
+      return;
+    }
+    setTimeout(poll, 1500);
+  }
+  poll();
+</script>
+{% endblock %}

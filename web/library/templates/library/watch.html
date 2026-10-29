@@ -1,0 +1,126 @@
+{% extends "library/base.html" %}
+{% block title %}{{ lec.title|truncatechars:60 }} · Course Library{% endblock %}
+{% block head %}
+<style>
+  .layout { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:16px; }
+  @media (max-width:900px) { .layout { grid-template-columns:1fr; } }
+  .player { position:relative; aspect-ratio:16/9; background:#000; border-radius:12px; overflow:hidden; }
+  .player iframe, .player video { position:absolute; inset:0; width:100%; height:100%; border:0; }
+  .player .empty { position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:20px; color:var(--muted); }
+  h1 { font-size:18px; margin:12px 0 6px; }
+  .meta { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs { display:flex; gap:6px; margin-bottom:8px; }
+  .tabs a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .list { max-height:calc(100vh - 110px); overflow:auto; border:1px solid var(--line); border-radius:10px; }
+  .list .head { position:sticky; top:0; background:var(--panel); padding:10px 12px; font-weight:600; border-bottom:1px solid var(--line); }
+  .list a { display:block; padding:8px 12px; border-bottom:1px solid var(--line); text-decoration:none; font-size:13px; }
+  .list a:hover { background:#141417; }
+  .list a.current { background:rgba(255,45,85,.12); border-left:3px solid var(--accent); }
+  @media (max-width:760px) {
+    .player { border-radius:8px; margin:0 -4px; }
+    h1 { font-size:15.5px; line-height:1.4; }
+    .actions .btn { flex:1 1 auto; justify-content:center; }
+    .list { max-height:none; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="layout">
+  <div>
+    {% if local and lec.youtube_id %}
+    <div class="tabs">
+      <a class="btn small {% if offline %}active{% endif %}" href="?mode=offline">💾 Downloaded file</a>
+      <a class="btn small {% if not offline %}active{% endif %}" href="?mode=online">YouTube embed</a>
+    </div>
+    {% endif %}
+    <div class="player">
+      {% if offline %}
+        <video src="{% url 'file' lec.pk 'video' %}" controls autoplay></video>
+      {% elif lec.youtube_id %}
+        <iframe src="https://www.youtube.com/embed/{{ lec.youtube_id }}?rel=0&autoplay=1" title="{{ lec.title }}"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+      {% elif lec.portal_url %}
+        <video id="portalVideo" controls autoplay playsinline hidden></video>
+        <div class="empty" id="portalWait">
+          <div>
+            <p id="portalMsg">Getting a fresh video link from Udvash…</p>
+            <p class="muted" id="portalSub" style="font-size:12.5px"></p>
+            <p><a class="btn small" href="{{ lec.portal_url }}" target="_blank" rel="noopener">Watch on the Udvash portal ↗</a></p>
+          </div>
+        </div>
+      {% else %}
+        <div class="empty">
+          <div>
+            <p>This lecture isn't on YouTube.</p>
+            {% if lec.portal_url %}<p><a class="btn" href="{{ lec.portal_url }}" target="_blank" rel="noopener">Watch on the Udvash portal ↗</a></p>{% endif %}
+            <form method="post" action="{% url 'set_direct_url' lec.pk %}" style="display:flex;gap:6px;margin-top:10px">
+              {% csrf_token %}
+              <input name="url" value="{{ lec.direct_url }}" placeholder="Paste a direct .mp4 link to make it downloadable" style="min-width:280px">
+              <button class="btn">Save</button>
+            </form>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    <h1>{{ lec.title }}</h1>
+    <div class="meta">
+      <span class="badge">{{ lec.subject }}</span>
+      <span class="badge">{{ lec.chapter }}</span>
+      <span class="badge">{{ lec.class_type }}</span>
+      <span class="badge {{ lec.status }}" id="status">{{ lec.get_status_display }}</span>
+    </div>
+    <div class="actions">
+      {% if prev %}<a class="btn" href="{% url 'watch' prev.pk %}">← Previous</a>{% endif %}
+      {% if next %}<a class="btn" href="{% url 'watch' next.pk %}">Next →</a>{% endif %}
+      {% if lec.youtube_id or lec.portal_url or local %}<a class="btn primary" href="{% url 'get' lec.pk 'video' %}" target="_blank"
+         title="Download the video to this device{% if lec.youtube_id and not local %} (720p: prepared on the app's PC first){% endif %}">📥 Download video</a>{% endif %}
+      {% if lec.youtube_id %}<a class="btn" href="{% url 'get' lec.pk 'video360' %}" target="_blank"
+         title="360p straight from YouTube to this device (works on your home network)">📥 360p</a>{% endif %}
+      {% if lec.note_url or lec.has_pdf %}<a class="btn" href="{% url 'get' lec.pk 'pdf' %}" target="_blank" title="Download the note to this device">📥 Note PDF</a>{% endif %}
+      {% if lec.has_pdf %}<a class="btn" href="{% url 'note' lec.pk %}" target="_blank">📄 Class note (saved)</a>
+      {% elif lec.note_url %}<a class="btn" href="{% url 'note' lec.pk %}" target="_blank" title="Online link, may have expired">📄 Class note ↗</a>{% endif %}
+      {% if lec.youtube_id %}<a class="btn" href="https://www.youtube.com/watch?v={{ lec.youtube_id }}" target="_blank" rel="noopener">Open on YouTube ↗</a>{% endif %}
+    </div>
+  </div>
+
+  <aside class="list">
+    <div class="head">{{ lec.chapter }}</div>
+    {% for s in siblings %}
+    <a href="{% url 'watch' s.pk %}" class="{% if s.pk == lec.pk %}current{% endif %}">
+      <span class="muted">{{ s.class_type }}</span>{% if s.status == "done" %} · <span style="color:var(--ok)">✓</span>{% endif %}<br>{{ s.title|truncatechars:110 }}
+    </a>
+    {% endfor %}
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}
+{% if not offline and not lec.youtube_id and lec.portal_url %}
+<script>
+  // Not on YouTube: the link feeder fetches a fresh signed link from the lecture's card and the
+  // video plays straight from Udvash's storage (nothing goes through or is kept on the app's PC).
+  (async function play() {
+    const msg = document.getElementById("portalMsg"), sub = document.getElementById("portalSub");
+    for (;;) {
+      let s;
+      try { s = await (await fetch("{% url 'api_get' lec.pk 'stream' %}")).json(); }
+      catch { msg.textContent = "The app isn't responding — retrying…"; await new Promise(r => setTimeout(r, 3000)); continue; }
+      if (s.state === "ready") {
+        const v = document.getElementById("portalVideo");
+        v.src = s.url;
+        v.hidden = false;
+        document.getElementById("portalWait").remove();
+        return;
+      }
+      if (s.state === "youtube") { location.reload(); return; }  // the feeder found it on YouTube
+      if (s.state === "failed") { msg.textContent = "Couldn't get the video: " + (s.error || "unknown error"); return; }
+      sub.textContent = s.feeder_ago != null && s.feeder_ago < 90 ? ""
+        : "The Chrome extension on the app's PC opens its Udvash tab within about 30 seconds.";
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  })();
+</script>
+{% endif %}
+{% endblock %}

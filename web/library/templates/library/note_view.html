@@ -1,0 +1,39 @@
+{% extends "library/base.html" %}
+{% block title %}{{ lec.title }}{% endblock %}
+{% block head %}
+<style>
+  main { max-width:none; padding:0; }
+  .pdfbar { display:flex; gap:10px; align-items:center; padding:6px 16px; border-bottom:1px solid var(--line); font-size:13px; }
+  .pdfbar .t { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #viewer { display:block; width:100%; height:calc(100vh - 92px); border:0; background:#525659; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="pdfbar">
+  <span class="t" title="{{ lec.title }}">📄 {{ lec.title }}</span>
+  <a class="btn small" href="{% url 'watch' lec.pk %}">▶ Watch lecture</a>
+  <button class="btn small" id="reveal">📁 Show in folder</button>
+</div>
+<p class="muted" id="loading" style="padding:16px">Loading PDF…</p>
+<iframe id="viewer" hidden title="{{ lec.title }}"></iframe>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Load the file with fetch() and show it from a blob: URL. Download managers like IDM take over
+  // anything served as a PDF, so the bytes come as plain data and are shown from a blob: URL.
+  (async () => {
+    const loading = document.getElementById("loading"), viewer = document.getElementById("viewer");
+    try {
+      const r = await fetch("{% url 'file' lec.pk 'pdf' %}?as=data");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const blob = new Blob([await r.arrayBuffer()], { type: "application/pdf" });
+      viewer.src = URL.createObjectURL(blob);
+      viewer.hidden = false; loading.remove();
+    } catch (e) {
+      loading.textContent = "Couldn't load the PDF: " + e.message;
+    }
+  })();
+  document.getElementById("reveal").onclick = () =>
+    post("{% url 'api_downloads_action' %}", { action: "reveal", kind: "pdf", ids: [{{ lec.pk }}] });
+</script>
+{% endblock %}

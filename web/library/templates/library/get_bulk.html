@@ -1,0 +1,99 @@
+{% extends "library/base.html" %}
+{% block title %}Download {{ items|length }} to this device{% endblock %}
+{% block content %}
+<div class="card" style="max-width:860px;margin:30px auto">
+  <h2 style="margin:0 0 4px;font-size:17px">📥 {{ items|length }}
+    {% if kind == "pdf" %}note PDFs{% elif kind == "video360" %}videos · 360p straight from YouTube{% else %}videos{% endif %} to this device</h2>
+  <p class="muted" style="font-size:13px;margin:0 0 10px">
+    Keep this tab open: it fetches them a few at a time and hands each one to your browser's downloads.
+    If the browser asks to <b>allow multiple downloads</b>, choose Allow.
+    {% if skipped %}{{ skipped }} of the lectures you picked have none and were left out.{% endif %}
+  </p>
+  <div id="summary" style="margin-bottom:6px"></div>
+  <div class="bar" style="height:6px;margin-bottom:12px"><i id="bar"></i></div>
+  <p><button class="btn" id="stop">⏸ Pause</button> <button class="btn" id="retry" hidden>↻ Retry failed</button></p>
+  <div id="list" style="font-size:13px"></div>
+</div>
+<div id="frames" hidden></div>
+{{ items|json_script:"items" }}
+{% endblock %}
+{% block scripts %}
+<script>
+  const KIND = "{{ kind }}";
+  const API = "{% url 'api_get' 0 'KIND' %}".replace("/0/", "/ID/").replace("KIND", KIND);
+  // Server-prepared 720p YouTube videos are heavy on the app's PC, so fewer at once.
+  const AT_ONCE = KIND === "video" ? 2 : 3;
+  const items = JSON.parse(document.getElementById("items").textContent)
+    .map(it => ({ ...it, state: "waiting", note: "" }));
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  let paused = false;
+
+  const ICON = { waiting: "·", working: "⏳", sent: "✓", failed: "⚠" };
+  function render() {
+    const n = s => items.filter(it => it.state === s).length;
+    const sent = n("sent"), failed = n("failed");
+    document.getElementById("summary").textContent =
+      `${sent} of ${items.length} sent to your downloads` + (failed ? ` · ${failed} failed` : "") + (paused ? " · paused" : "");
+    document.getElementById("bar").style.width = (100 * (sent + failed) / Math.max(items.length, 1)) + "%";
+    document.getElementById("retry").hidden = !failed;
+    document.getElementById("list").innerHTML = items.map(it =>
+      `<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--line, #8882)">
+         <span style="width:1.2em">${ICON[it.state]}</span>
+         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title)}</span>
+         <span class="muted" style="white-space:nowrap">${esc(it.note)}</span></div>`).join("");
+  }
+
+  // Hand a URL to the browser's downloads without leaving this page. Udvash's own links would open
+  // in the browser instead of saving, so those go through the app (relay); nothing is stored there.
+  function hand(url) {
+    const f = document.createElement("iframe");
+    f.src = url;
+    document.getElementById("frames").appendChild(f);
+    setTimeout(() => f.remove(), 120000);
+  }
+
+  async function fetchOne(it) {
+    it.state = "working"; it.note = "starting…"; render();
+    for (;;) {
+      while (paused) await sleep(500);
+      let s;
+      try { s = await (await fetch(API.replace("ID", it.id))).json(); }
+      catch { it.note = "app not responding — retrying…"; render(); await sleep(3000); continue; }
+      if (s.state === "ready") {
+        hand(s.relay || s.url);
+        it.state = "sent"; it.note = s.relay ? "via the app" : s.direct ? "direct" : "";
+        render();
+        await sleep(1500);  // browsers drop downloads started too close together
+        return;
+      }
+      if (s.state === "failed") { it.state = "failed"; it.note = s.error || "failed"; render(); return; }
+      it.note = s.state === "link" ? (s.feeder_ago != null && s.feeder_ago < 90 ? "getting a fresh Udvash link…"
+                                                                              : "waiting for the link feeder on the app's PC…")
+              : s.state === "resolving" ? "getting the YouTube link…"
+              : s.state === "preparing" ? `preparing on the app's PC ${s.pct || 0}%${s.speed ? " · " + s.speed : ""}` : s.state;
+      render();
+      await sleep(1500);
+    }
+  }
+
+  async function run() {
+    let next = 0;
+    const todo = items.filter(it => it.state === "waiting");
+    await Promise.all(Array.from({ length: AT_ONCE }, async () => {
+      while (next < todo.length) await fetchOne(todo[next++]);
+    }));
+    render();
+  }
+
+  document.getElementById("stop").onclick = e => {
+    paused = !paused; e.target.textContent = paused ? "▶ Resume" : "⏸ Pause"; render();
+  };
+  document.getElementById("retry").onclick = () => {
+    items.forEach(it => { if (it.state === "failed") { it.state = "waiting"; it.note = ""; } });
+    run();
+  };
+  render();
+  run();
+</script>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "library/base.html" %}
+{% block title %}Sign in · Course Library{% endblock %}
+{% block content %}
+<form method="post" class="card" style="max-width:360px;margin:80px auto;display:flex;flex-direction:column;gap:10px">
+  {% csrf_token %}
+  <h2 style="margin:0;font-size:17px">🔒 Course Library</h2>
+  <span class="muted">Enter the app password.</span>
+  {% if error %}<div class="msg err">{{ error }}</div>{% endif %}
+  <input type="password" name="password" autofocus required>
+  <input type="hidden" name="next" value="{{ next }}">
+  <button class="btn primary">Sign in</button>
+</form>
+{% endblock %}

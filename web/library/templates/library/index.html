@@ -1,0 +1,361 @@
+{% extends "library/base.html" %}
+{% block head %}
+<style>
+  .course { padding:10px 14px; margin-bottom:12px; font-size:13px; }
+  .course form { display:flex; gap:8px; flex-wrap:wrap; }
+  .course input { flex:1; min-width:220px; }
+  .course .line { margin-top:6px; }
+  .stats { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .stats .card { padding:10px 14px; min-width:120px; }
+  .stats b { display:block; font-size:20px; }
+  .filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .filters input[type=search] { flex:1; min-width:200px; }
+  .toolbar { position:sticky; top:49px; z-index:4; background:var(--bg); padding:8px 0; display:flex; gap:8px;
+             flex-wrap:wrap; align-items:center; border-bottom:1px solid var(--line); margin-bottom:8px; }
+  details.subject { margin:10px 0; }
+  details.subject > summary { cursor:pointer; font-size:17px; font-weight:700; padding:8px 0; }
+  .chapter { margin:6px 0 14px; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .chapter-head { display:flex; gap:10px; align-items:center; background:var(--panel); padding:8px 12px; font-weight:600; }
+  .chapter-head .btn { margin-left:auto; }
+  .row { display:grid; grid-template-columns:24px 40px 1fr 150px auto; gap:10px; align-items:center;
+         padding:7px 12px; border-top:1px solid var(--line); }
+  .row:hover { background:#141417; }
+  .row .title a { text-decoration:none; }
+  .row .title a:hover { color:var(--accent); }
+  .row .title .badge { margin-right:6px; }
+  .row .actions { display:flex; gap:6px; justify-content:flex-end; }
+  .row .err { color:var(--bad); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* Live downloads panel */
+  #activity { position:fixed; right:16px; bottom:16px; z-index:10; width:min(380px, calc(100vw - 32px));
+              background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.45); }
+  #activity header { position:static; display:flex; align-items:center; gap:8px; padding:10px 12px; background:none;
+                     border-bottom:1px solid var(--line); cursor:pointer; font-weight:600; backdrop-filter:none; }
+  #activity header .spin { width:12px; height:12px; border:2px solid var(--line); border-top-color:var(--info);
+                           border-radius:50%; animation:spin .8s linear infinite; }
+  #activity.idle header .spin { animation:none; border-top-color:var(--ok); }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #activity .body { max-height:45vh; overflow:auto; padding:6px 12px 10px; }
+  #activity.collapsed .body { display:none; }
+  #activity .item { padding:6px 0; border-bottom:1px solid var(--line); font-size:12.5px; }
+  #activity .item:last-child { border-bottom:0; }
+  #activity .item .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #activity .item .meta { color:var(--muted); font-size:11.5px; display:flex; justify-content:space-between; gap:8px; }
+  #activity .bar.indeterminate > i { width:30% !important; animation:slide 1.2s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left:-30%; } 100% { margin-left:100%; } }
+  @media (max-width:760px) {
+    .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .stats .card { min-width:0; padding:8px 10px; }
+    .stats b { font-size:17px; }
+    .filters input[type=search] { flex-basis:100%; }
+    .filters select { flex:1 1 40%; min-width:0; }
+    /* The bulk controls would cover a third of a phone screen if they stayed pinned. */
+    .toolbar { position:static; }
+    .toolbar #bulkKind, .toolbar .btn { flex:1 1 100%; justify-content:center; }
+    .toolbar > span[style] { display:none; }
+    details.subject > summary { font-size:16px; }
+    .chapter-head { flex-wrap:wrap; padding:8px 10px; }
+    .chapter-head .btn { margin-left:0; }
+    .row { grid-template-columns:24px 1fr; padding:10px; }
+    .row .num { display:none; }
+    .row .title { font-size:13.5px; }
+    .row .state, .row .actions { grid-column:2; justify-content:flex-start; }
+    .row .actions { flex-wrap:wrap; }
+    #activity { left:8px; right:8px; bottom:8px; width:auto; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="card course">
+  <form id="courseForm">
+    <input id="courseUrl" value="{{ course_start }}" placeholder="Paste a link from the course on Udvash (any page of it)">
+    <button class="btn primary">⟳ Load course</button>
+  </form>
+  <div class="line muted" id="courseMsg"></div>
+  <div class="line muted" id="sysStatus"></div>
+</div>
+{% if not lectures and not f.q and not f.subject and not f.type and not f.status %}
+<div class="card" style="text-align:center;margin-bottom:14px">No lectures yet — paste the course link above and press <b>⟳ Load course</b>.
+  It needs the “Course Library link feeder” Chrome extension (chrome://extensions → Developer mode → Load unpacked →
+  <code>{{ feeder_ext_dir }}</code>) and Chrome logged in to Udvash on the app's PC.</div>
+{% endif %}
+<div class="stats">
+  <div class="card"><span class="muted">🎬 Videos downloaded</span><b><span id="statDone">{{ done }}</span> / <span id="videoTotal">{{ video_total }}</span></b>
+    <div class="bar"><i id="barVideo" style="width:0;background:var(--ok)"></i></div></div>
+  <div class="card"><span class="muted">📄 PDFs downloaded</span><b><span id="statPdf">{{ pdf_saved }}</span> / <span id="pdfTotal">{{ pdf_total }}</span></b>
+    <div class="bar"><i id="barPdf" style="width:0;background:var(--ok)"></i></div></div>
+  <div class="card"><span class="muted">In queue</span><b id="statActive">{{ active }}</b></div>
+  <div class="card"><span class="muted">Failed</span><b id="statFailed">{{ failed }}</b></div>
+</div>
+
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Search lectures or chapters…">
+  <select name="subject" onchange="this.form.submit()">
+    <option value="">All subjects</option>
+    {% for s in subjects %}<option {% if s == f.subject %}selected{% endif %}>{{ s }}</option>{% endfor %}
+  </select>
+  <select name="type" onchange="this.form.submit()">
+    <option value="">All class types</option>
+    {% for t in types %}<option {% if t == f.type %}selected{% endif %}>{{ t }}</option>{% endfor %}
+  </select>
+  <select name="status" onchange="this.form.submit()">
+    <option value="">Any status</option>
+    <option value="none" {% if f.status == "none" %}selected{% endif %}>Not downloaded</option>
+    <option value="queued" {% if f.status == "queued" %}selected{% endif %}>Queued</option>
+    <option value="downloading" {% if f.status == "downloading" %}selected{% endif %}>Downloading</option>
+    <option value="done" {% if f.status == "done" %}selected{% endif %}>Downloaded</option>
+    <option value="failed" {% if f.status == "failed" %}selected{% endif %}>Failed</option>
+  </select>
+  <button class="btn">Filter</button>
+  {% if f.q or f.subject or f.type or f.status %}<a class="btn" href="{% url 'index' %}">Clear</a>{% endif %}
+</form>
+
+<div class="toolbar">
+  <label><input type="checkbox" id="selectAll"> Select all shown</label>
+  <span class="muted" id="selCount">0 selected</span>
+  <select class="btn" id="bulkKind" title="What to download">
+    <option value="video360">Videos · 360p straight from YouTube</option>
+    <option value="video">Videos · {{ quality }}p</option>
+    <option value="pdf">Note PDFs</option>
+  </select>
+  <button class="btn primary" id="dlSelected" disabled>📥 Selected to this device</button>
+  <button class="btn" id="dlShown">📥 All shown to this device ({{ lectures|length }})</button>
+  <span class="muted" id="pdfStatus"></span>
+  <span class="muted" style="margin-left:auto">Saves to the device you're using</span>
+</div>
+
+{% regroup lectures by subject as subject_list %}
+{% for subject in subject_list %}
+<details class="subject" open>
+  <summary>{{ subject.grouper }} <span class="muted" style="font-weight:400;font-size:13px">· {{ subject.list|length }} lectures
+    · <span class="group-stats"></span></span></summary>
+  {% regroup subject.list by chapter as chapter_list %}
+  {% for chapter in chapter_list %}
+  <section class="chapter">
+    <div class="chapter-head">
+      {{ chapter.grouper }} <span class="muted" style="font-weight:400">· {{ chapter.list|length }} · <span class="group-stats"></span></span>
+      <button class="btn small dl-chapter" title="Download this chapter to this device (what the menu above says)">📥 Chapter</button>
+    </div>
+    {% for lec in chapter.list %}
+    <div class="row" data-id="{{ lec.pk }}" data-can="{{ lec.can_download|yesno:'1,0' }}"
+         data-note="{{ lec.note_url|yesno:'1,0' }}" data-pdf="{{ lec.has_pdf|yesno:'1,0' }}">
+      <input type="checkbox" class="sel">
+      <span class="num muted">{{ lec.order }}</span>
+      <div class="title">
+        <span class="badge">{{ lec.class_type }}</span><a href="{% url 'watch' lec.pk %}">{{ lec.title }}</a>
+        {% if not lec.youtube_id %}<span class="badge failed">Portal only</span>{% endif %}
+      </div>
+      <div class="state">
+        <span class="badge {{ lec.status }}">{{ lec.get_status_display }}</span>
+        <span class="speed muted" style="font-size:11.5px"></span>
+        <div class="bar" {% if lec.status != "downloading" %}hidden{% endif %}><i style="width:{{ lec.progress }}%"></i></div>
+        <div class="err" title="{{ lec.error }}">{{ lec.error }}</div>
+      </div>
+      <div class="actions">
+        <a class="btn small" href="{% url 'watch' lec.pk %}">▶ Watch</a>
+        {% if lec.has_pdf %}<a class="btn small pdf" href="{% url 'note' lec.pk %}" target="_blank" title="Downloaded note">PDF ✓</a>
+        {% elif lec.note_url %}<a class="btn small pdf" href="{% url 'note' lec.pk %}" target="_blank" title="Downloads the note first, then opens it here">PDF ↗</a>{% endif %}
+        {% if lec.youtube_id or lec.portal_url or lec.video_saved %}<a class="btn small" href="{% url 'get' lec.pk 'video' %}" target="_blank" title="Download the video to this device{% if lec.youtube_id and not lec.video_saved %} (720p: prepared on the app's PC first){% endif %}">📥</a>{% endif %}
+        {% if lec.youtube_id %}<a class="btn small" href="{% url 'get' lec.pk 'video360' %}" target="_blank" title="Download 360p straight from YouTube to this device (works on your home network)">📥 360p</a>{% endif %}
+        {% if lec.note_url or lec.has_pdf %}<a class="btn small" href="{% url 'get' lec.pk 'pdf' %}" target="_blank" title="Download the note to this device">📥 PDF</a>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</details>
+{% empty %}
+<p class="muted">No lectures match these filters.</p>
+{% endfor %}
+
+<div id="activity" class="idle">
+  <header id="activityHead"><span class="spin"></span><span id="activityTitle">Downloads · idle</span>
+    <span class="muted" style="margin-left:auto;font-weight:400" id="activityToggle">hide</span></header>
+  <div class="body" id="activityBody"><p class="muted" style="margin:6px 0">Nothing downloading right now.</p></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const LABELS = { "": "Not downloaded", queued: "Queued", downloading: "Downloading", done: "Downloaded", failed: "Failed" };
+  const rows = [...document.querySelectorAll(".row")];
+  const byId = Object.fromEntries(rows.map(r => [r.dataset.id, r]));
+  const selBoxes = rows.map(r => r.querySelector(".sel")).filter(b => !b.disabled);
+  const dlSelected = document.getElementById("dlSelected");
+
+  function refreshSelection() {
+    const n = selBoxes.filter(b => b.checked).length;
+    document.getElementById("selCount").textContent = `${n} selected`;
+    dlSelected.disabled = !n;
+  }
+  selBoxes.forEach(b => b.addEventListener("change", refreshSelection));
+  document.getElementById("selectAll").addEventListener("change", e => {
+    selBoxes.forEach(b => b.checked = e.target.checked); refreshSelection();
+  });
+
+  // Bulk downloads to this device open in their own tab, which fetches them one after another.
+  const bulkKind = document.getElementById("bulkKind");
+  try { bulkKind.value = localStorage.getItem("bulkKind") || bulkKind.value; } catch {}
+  bulkKind.onchange = () => { try { localStorage.setItem("bulkKind", bulkKind.value); } catch {} };
+  function toDevice(rowList) {
+    const ids = rowList.map(r => r.dataset.id);
+    if (ids.length) window.open(`{% url 'get_bulk' %}?kind=${bulkKind.value}&ids=${ids.join(",")}`, "_blank");
+  }
+  dlSelected.onclick = () => toDevice(rows.filter(r => r.querySelector(".sel").checked));
+  document.getElementById("dlShown").onclick = () => toDevice(rows);
+  document.querySelectorAll(".dl-chapter").forEach(b =>
+    b.onclick = () => toDevice([...b.closest(".chapter").querySelectorAll(".row")]));
+
+  const activity = document.getElementById("activity");
+  // On a phone the panel starts folded so it doesn't cover the list; tap it to open.
+  if (matchMedia("(max-width:760px)").matches) {
+    activity.classList.add("collapsed");
+    document.getElementById("activityToggle").textContent = "show";
+  }
+  document.getElementById("activityHead").onclick = () => {
+    activity.classList.toggle("collapsed");
+    document.getElementById("activityToggle").textContent = activity.classList.contains("collapsed") ? "show" : "hide";
+  };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const mb = n => (n / 1048576).toFixed(1) + " MB";
+  const item = (icon, name, pct, left, right) => `<div class="item"><div class="name">${icon} ${esc(name)}</div>
+      <div class="bar ${pct == null ? "indeterminate" : ""}"><i style="width:${pct || 0}%"></i></div>
+      <div class="meta"><span>${esc(left)}</span><span>${esc(right)}</span></div></div>`;
+
+  // Bottom-right panel: what is downloading right now.
+  function renderActivity(data) {
+    const job = data.pdf, vids = Object.values(data.lectures).filter(s => s.status === "downloading");
+    const queuedVids = Object.values(data.lectures).filter(s => s.status === "queued").length;
+    const busy = job.running || vids.length || queuedVids;
+    activity.classList.toggle("idle", !busy);
+    const parts = [];
+    if (vids.length || queuedVids) parts.push(`🎬 ${vids.length} downloading, ${queuedVids} queued`);
+    if (job.running) parts.push(`📄 ${job.done + job.failed}/${job.total}`);
+    document.getElementById("activityTitle").textContent = busy ? "Downloads · " + parts.join(" · ") : "Downloads · idle";
+
+    let html = "";
+    if (job.running) {
+      const finished = job.done + job.failed;
+      html += item("📄", `Note PDFs — ${job.done} saved` + (job.failed ? `, ${job.failed} failed` : ""),
+                   100 * finished / Math.max(job.total, 1), `${finished} of ${job.total} processed`,
+                   `${job.total - finished} left`);
+      for (const a of job.active) {
+        const pct = a.size ? 100 * a.got / a.size : null;
+        html += item("⏳", a.title, pct, a.note || (a.size ? `${mb(a.got)} / ${mb(a.size)}` : mb(a.got)),
+                     pct == null ? "" : pct.toFixed(0) + "%");
+      }
+    }
+    for (const v of vids) html += item("🎬", v.title, v.progress, v.speed || "starting…", (v.progress || 0).toFixed(0) + "%");
+    if (!job.running && job.total && (job.done || job.failed))
+      html += `<p class="muted" style="margin:6px 0">Last PDF run: ${job.done} saved, ${job.failed} failed` +
+              (job.failed ? ` — ${esc(job.error || "")}` : "") + `</p>`;
+    document.getElementById("activityBody").innerHTML = html || `<p class="muted" style="margin:6px 0">Nothing downloading right now.</p>`;
+
+  }
+
+  let pdfWasRunning = false;
+  function renderPdf(job, local) {
+    const el = document.getElementById("pdfStatus");
+    if (job.running || pdfWasRunning) {
+      const failed = job.failed ? ` · ${job.failed} failed (expired links — re-import a fresh CSV)` : "";
+      el.textContent = job.running ? `PDFs: ${job.done + job.failed} / ${job.total}${failed}`
+                                   : `PDFs finished: ${job.done} saved${failed}`;
+    }
+    for (const id of local) {
+      const row = byId[id];
+      if (!row) continue;
+      row.dataset.pdf = "1";
+      const a = row.querySelector(".pdf");
+      if (a) { a.textContent = "PDF ✓"; a.title = "Downloaded note"; }
+    }
+    pdfWasRunning = job.running;
+  }
+
+  // "🎬 x/y · 📄 x/y" for every subject and chapter shown.
+  function renderGroupStats() {
+    document.querySelectorAll(".group-stats").forEach(el => {
+      const box = el.closest("details.subject, section.chapter");
+      const rs = [...box.querySelectorAll(".row")];
+      const vids = rs.filter(r => r.dataset.can === "1"), notes = rs.filter(r => r.dataset.note === "1");
+      el.textContent = `🎬 ${vids.filter(r => r.dataset.status === "done").length}/${vids.length}` +
+                       ` · 📄 ${notes.filter(r => r.dataset.pdf === "1").length}/${notes.length}`;
+    });
+  }
+
+  function render(row, s) {
+    const status = s ? s.status : "";
+    row.dataset.status = status;
+    const badge = row.querySelector(".state .badge");
+    badge.className = "badge " + status;
+    badge.textContent = status === "downloading" ? `${(s.progress || 0).toFixed(0)}%` : LABELS[status];
+    row.querySelector(".speed").textContent = status === "downloading" ? (s.speed || "") : "";
+    const bar = row.querySelector(".bar");
+    bar.hidden = status !== "downloading";
+    bar.firstElementChild.style.width = (s && s.progress || 0) + "%";
+    row.querySelector(".err").textContent = status === "failed" ? s.error : "";
+    row.querySelector(".err").title = status === "failed" ? s.error : "";
+  }
+
+  let timer = null;
+  // ⟳ Load course: the feeder extension reads the course from Udvash; progress shows here.
+  const courseMsg = document.getElementById("courseMsg");
+  let courseWas = null;
+  function renderCourse(c) {
+    const busy = c.pending || c.running;
+    if (c.pending) courseMsg.textContent = "Waiting for the link feeder to open its Udvash tab (about 30 seconds)…";
+    else if (c.running) courseMsg.textContent = `Reading the course from Udvash… ${c.done_types} of ${c.total_types || "?"} class lists`
+      + ` · ${c.cards} lectures (${c.added} new)`;
+    else if (c.error) courseMsg.textContent = "Loading the course failed: " + c.error;
+    else if (c.finished && !c.cards) courseMsg.textContent = "Course loaded: it has no lectures on Udvash yet.";
+    else if (c.finished) courseMsg.textContent = `Course loaded at ${new Date(c.finished * 1000).toLocaleTimeString()}: `
+      + `${c.cards} lectures, ${c.added} new, ${c.updated} already here.`;
+    else courseMsg.textContent = "";
+    if (courseWas && !busy && c.finished && c.added) location.reload();  // show the new lectures
+    courseWas = busy;
+    return busy;
+  }
+  document.getElementById("courseForm").onsubmit = async e => {
+    e.preventDefault();
+    const r = await post("{% url 'api_course_load' %}", { url: document.getElementById("courseUrl").value });
+    if (r.error) { courseMsg.textContent = r.error; return; }
+    renderCourse(r);
+    poll();
+  };
+
+  // The link feeder at a glance (it runs in Chrome on the app's PC).
+  function renderSys(d) {
+    const ago = d.feeder_ago;
+    document.getElementById("sysStatus").textContent =
+      ago != null && ago < 90 ? "🔗 Link feeder connected" : "🔗 Link feeder idle (opens by itself when needed)";
+  }
+
+  async function poll() {
+    clearTimeout(timer);
+    const data = await (await fetch("{% url 'api_status' %}")).json();
+    // Another course was loaded since this page was drawn: show that one.
+    if (data.course_id !== "{{ course_id }}") { location.reload(); return; }
+    renderSys(data);
+    const loading = renderCourse(data.course);
+    renderPdf(data.pdf, data.pdf_local);
+    const L = data.lectures;
+    let done = 0, active = 0, failed = 0;
+    for (const s of Object.values(L)) {
+      if (s.status === "done") done++;
+      else if (s.status === "failed") failed++;
+      else active++;
+    }
+    rows.forEach(r => render(r, L[r.dataset.id]));
+    document.getElementById("statDone").textContent = data.video_done;
+    document.getElementById("videoTotal").textContent = data.video_total;
+    document.getElementById("pdfTotal").textContent = data.pdf_total;
+    document.getElementById("statPdf").textContent = data.pdf_local.length;
+    document.getElementById("barVideo").style.width = (100 * done / Math.max(data.video_total, 1)) + "%";
+    document.getElementById("barPdf").style.width = (100 * data.pdf_local.length / Math.max(data.pdf_total, 1)) + "%";
+    renderGroupStats();
+    renderActivity(data);
+    document.getElementById("statActive").textContent = active;
+    document.getElementById("statFailed").textContent = failed;
+    timer = setTimeout(poll, active || data.pdf.running || loading ? 2000 : 5000);
+  }
+  poll();
+</script>
+{% endblock %}

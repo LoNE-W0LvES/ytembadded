@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Per-install data and secrets (made again on first run)
+web/db.sqlite3
+web/secret_key.txt
+web/course.json
+web/download_limits.json
+app_password.txt
+credentials.json
+drive_token.json
+*.pem
+
+# Downloaded lectures
+downloads/
