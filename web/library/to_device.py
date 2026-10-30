@@ -10,7 +10,7 @@ import re
 import shutil
 import threading
 import time
-from urllib.parse import quote
+import urllib.request
 
 import yt_dlp
 from django.conf import settings
@@ -107,10 +107,12 @@ def links_wanted(kind):
 
 
 # ---- YouTube 360p: the one quality YouTube has as a single file with sound ----
-# This PC only works the link out (yt-dlp); the device downloads it from YouTube itself. YouTube
-# ties the link to the internet address that asked for it, so it works on devices on the same
-# home connection. Its title= parameter makes YouTube send it as a download under that name.
+# Nothing to merge, so nothing is stored here: the app works the link out (yt-dlp) and passes the
+# file through to the device as it comes. Not straight from YouTube: browsers play YouTube's link
+# instead of saving it, and YouTube slows a whole-file request to a crawl, so the app asks for it
+# in RANGE_CHUNK pieces, the way yt-dlp does.
 
+RANGE_CHUNK = 10 << 20
 _links360 = {}  # pk -> {state, url, error}
 
 
@@ -125,7 +127,7 @@ def _youtube_360(lec):
             _links360.pop(lec.pk, None)  # reopening the page tries again
             return {"state": "failed", "error": job["error"]}
         if job["state"] == "ready":
-            return {"state": "ready", "url": job["url"], "direct": True}
+            return {"state": "ready", "url": reverse("get_360", args=[lec.pk])}
         return {"state": "resolving"}
 
 
@@ -135,9 +137,34 @@ def _resolve_360(lec, job):
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={lec.youtube_id}", download=False)
-        job.update(state="ready", url=info["url"] + "&title=" + quote(lec.base_path.name + " 360p"))
+        size = info.get("filesize") or downloader._remote_size(info["url"])
+        if not size:
+            raise RuntimeError("YouTube didn't say how big the video is")
+        job.update(state="ready", url=info["url"], size=int(size))
     except Exception as e:
         job.update(state="failed", error=str(e)[:300])
+
+
+def link_360(pk):
+    """(YouTube link, size) of a resolved 360p video, or None."""
+    with _lock:
+        job = _links360.get(pk)
+        if job and job["state"] == "ready" and link_ok(job["url"], expiry=_yt_expiry(job["url"])):
+            return job["url"], job["size"]
+    return None
+
+
+def stream_360(url, start, end):
+    """Bytes start..end (inclusive) of a YouTube video, fetched RANGE_CHUNK at a time."""
+    while start <= end:
+        last = min(start + RANGE_CHUNK - 1, end)
+        req = urllib.request.Request(url, headers={"Range": f"bytes={start}-{last}", "User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            while data := resp.read(1 << 20):
+                start += len(data)
+                yield data
+        if start <= last:
+            raise RuntimeError("YouTube stopped sending the video")
 
 
 def _yt_expiry(url):

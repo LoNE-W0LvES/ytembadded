@@ -16,6 +16,7 @@ urlpatterns = [
     path("file/<int:pk>/<str:kind>/", views.serve_file, name="file"),
     path("note/<int:pk>/", views.note, name="note"),
     path("get/", views.get_bulk, name="get_bulk"),
+    path("get/<int:pk>/video360/file/", views.get_360, name="get_360"),
     path("get/<int:pk>/video/file/", views.get_file, name="get_file"),
     path("get/<int:pk>/<str:kind>/relay/", views.get_relay, name="get_relay"),
     path("get/<int:pk>/<str:kind>/", views.get_page, name="get"),

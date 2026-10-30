@@ -4,7 +4,7 @@
 <div class="card" style="max-width:640px;margin:60px auto;text-align:center">
   <div style="font-size:34px">📥</div>
   <h2 style="margin:8px 0 4px;font-size:17px">{{ lec.title }}</h2>
-  <div class="muted" style="font-size:13px">{{ lec.subject }} · {{ lec.chapter }} · {% if kind == "pdf" %}note PDF{% elif kind == "video360" %}video · 360p straight from YouTube{% else %}video{% endif %}</div>
+  <div class="muted" style="font-size:13px">{{ lec.subject }} · {{ lec.chapter }} · {% if kind == "pdf" %}note PDF{% elif kind == "video360" %}video · 360p from YouTube{% else %}video{% endif %}</div>
   <p id="msg" style="margin:18px 0 6px">Getting it ready…</p>
   <div class="bar" style="height:6px"><i id="bar"></i></div>
   <p class="muted" id="sub" style="font-size:12.5px;min-height:1.4em"></p>
@@ -27,7 +27,7 @@
       msg.textContent = "Your download has started — check your browser's downloads.";
       if (s.direct) {
         // Straight from Udvash's storage. Some browsers play/show such a link instead of saving it.
-        sub.textContent = "Downloading straight from {% if kind == "video360" %}YouTube{% else %}Udvash{% endif %} — it doesn't go through the app's PC.";
+        sub.textContent = "Downloading straight from Udvash — it doesn't go through the app's PC.";
         more.innerHTML = s.relay ? `If it opened instead of downloading, <a href="${s.relay}">download it through the app</a>.`
                                  : `<a href="${s.url}">Didn't start? Click here</a>`;
       } else {

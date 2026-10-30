@@ -124,18 +124,21 @@ def serve_file(request, pk, kind):
     return resp
 
 
+def _byte_range(request, size):
+    """(whole, start, end) the request's Range header asks for, end inclusive."""
+    m = re.match(r"bytes=(\d*)-(\d*)", request.headers.get("Range", ""))
+    if not m or not (m[1] or m[2]):
+        return True, 0, size - 1
+    if m[1]:
+        return False, int(m[1]), min(int(m[2]) if m[2] else size - 1, size - 1)
+    return False, max(size - int(m[2]), 0), size - 1
+
+
 def _serve_path(request, path, ctype, wrap=lambda chunks: chunks):
     """A local file, with byte-range support so the browser can seek in long videos.
     wrap() sees every chunk sent (to_device counts them)."""
     size = path.stat().st_size
-    m = re.match(r"bytes=(\d*)-(\d*)", request.headers.get("Range", ""))
-    whole = not m or not (m[1] or m[2])
-    if whole:
-        start, end = 0, size - 1
-    elif m[1]:
-        start, end = int(m[1]), min(int(m[2]) if m[2] else size - 1, size - 1)
-    else:
-        start, end = max(size - int(m[2]), 0), size - 1
+    whole, start, end = _byte_range(request, size)
 
     def stream(remaining=end - start + 1):
         with open(path, "rb") as fh:
@@ -196,6 +199,25 @@ def get_file(request, pk):
     resp = _serve_path(request, job["path"], "application/octet-stream",
                        lambda chunks: to_device.counting(job, chunks))
     resp["Content-Disposition"] = content_disposition_header(True, lec.video_path.name)
+    return resp
+
+
+def get_360(request, pk):
+    """A YouTube lecture at 360p, passed through from YouTube under the lecture's file name.
+    Nothing is stored; a paused download resumes with a Range request."""
+    lec = get_object_or_404(Lecture, pk=pk)
+    link = to_device.link_360(pk)
+    if not link:
+        raise Http404("No fresh link - open the download page again")
+    url, size = link
+    whole, start, end = _byte_range(request, size)
+    resp = StreamingHttpResponse(to_device.stream_360(url, start, end), status=200 if whole else 206,
+                                 content_type="application/octet-stream")
+    if not whole:
+        resp["Content-Range"] = f"bytes {start}-{end}/{size}"
+    resp["Content-Length"] = str(end - start + 1)
+    resp["Accept-Ranges"] = "bytes"
+    resp["Content-Disposition"] = content_disposition_header(True, f"{lec.base_path.name} 360p.mp4")
     return resp
 
 

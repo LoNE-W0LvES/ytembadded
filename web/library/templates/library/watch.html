@@ -78,7 +78,7 @@
       {% if lec.youtube_id or lec.portal_url or local %}<a class="btn primary" href="{% url 'get' lec.pk 'video' %}" target="_blank"
          title="Download the video to this device{% if lec.youtube_id and not local %} (720p: prepared on the app's PC first){% endif %}">📥 Download video</a>{% endif %}
       {% if lec.youtube_id %}<a class="btn" href="{% url 'get' lec.pk 'video360' %}" target="_blank"
-         title="360p straight from YouTube to this device (works on your home network)">📥 360p</a>{% endif %}
+         title="Download 360p from YouTube to this device (quick: no merging on the PC)">📥 360p</a>{% endif %}
       {% if lec.note_url or lec.has_pdf %}<a class="btn" href="{% url 'get' lec.pk 'pdf' %}" target="_blank" title="Download the note to this device">📥 Note PDF</a>{% endif %}
       {% if lec.has_pdf %}<a class="btn" href="{% url 'note' lec.pk %}" target="_blank">📄 Class note (saved)</a>
       {% elif lec.note_url %}<a class="btn" href="{% url 'note' lec.pk %}" target="_blank" title="Online link, may have expired">📄 Class note ↗</a>{% endif %}
