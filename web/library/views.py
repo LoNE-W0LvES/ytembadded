@@ -454,6 +454,9 @@ def api_course_feed(request):
     """For the feeder: GET whether to read the course now; POST a page of cards it read."""
     if request.method == "OPTIONS":
         return _portal_cors(HttpResponse())
+    # A course load keeps the feeder busy for minutes: count it as checking in, or the extension
+    # takes the quiet tab for dead and replaces it mid-load.
+    downloader.feeder["last_seen"] = time.time()
     if request.method == "POST":
         course.receive(json.loads(request.body or "{}"))
         return _portal_cors(JsonResponse({"ok": True}))

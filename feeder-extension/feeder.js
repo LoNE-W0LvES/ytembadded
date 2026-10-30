@@ -12,8 +12,24 @@
   // this tab by itself next time the app needs links (background.js).
   try { chrome.runtime.sendMessage({ feeder: true, app: APP, start: START }); } catch {}
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const card = {};  // portal content id -> its note card page (filled at start and by Load course)
   const uniq = a => [...new Set(a)];
-  const getDoc = async u => new DOMParser().parseFromString(await (await fetch(u, { cache: "no-store" })).text(), "text/html");
+  const getDoc = async u => {
+    const res = await fetch(u, { cache: "no-store" });
+    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    doc.landedOn = new URL(res.url).pathname;  // where Udvash actually sent us (a redirect to its login, say)
+    return doc;
+  };
+  // Why a course page has no subjects: an empty course is still the subject page; anything else
+  // (the login page, a "logged in on another device" notice) is a problem to show, not an empty course.
+  const notCoursePage = doc => {
+    if (doc.querySelector('input[type="password"]') || /login|signin|account/i.test(doc.landedOn))
+      return "Chrome isn't logged in to Udvash on this PC — log in there and press Load course again";
+    if (doc.landedOn.toLowerCase() !== "/content/contentsubject")
+      return `Udvash showed "${textOf(doc.querySelector("title")) || "a page"}" (${doc.landedOn}) instead of the course — ` +
+             "open the course in that Chrome, check it's your course and you're logged in, then press Load course again";
+    return "";
+  };
   const hrefs = (doc, path) => [...doc.querySelectorAll("a[href]")].map(a => a.getAttribute("href")).filter(h => h.split("?")[0] === path);
   const linkIn = doc => [...doc.querySelectorAll('[onclick*="forceDownload"]')]
     .map(e => (e.getAttribute("onclick").match(/forceDownload\(\s*['"]([^'"]+)['"]/) || [])[1]).find(Boolean);
@@ -70,8 +86,8 @@
       const startDoc = await getDoc(job.start);
       const subjects = linksTo(startDoc, "/Content/ContentChapter");
       if (!subjects.length) {
-        // A login form means the session ran out; otherwise the course simply has nothing in it yet.
-        if (startDoc.querySelector('input[type="password"]')) throw new Error("Chrome isn't logged in to Udvash — log in and press Load course again");
+        const problem = notCoursePage(startDoc);
+        if (problem) throw new Error(problem);
         await send({ done: true, done_types: 0, total_types: 0 });
         return;
       }
@@ -85,6 +101,7 @@
       }
       let done = 0;
       for (const list of lists) {
+        if (!chrome.runtime?.id) return;  // the extension was reloaded: the new copy takes over
         const doc = await getDoc(list.href);
         const boxes = [...doc.querySelectorAll(".card")].filter(c => c.querySelector('a[href^="/Content/DisplayContentCardDetails"]'));
         const lectures = (await pool(boxes, 3, async box => {
@@ -127,9 +144,8 @@
   (async () => {
     // 1. Map portal content id -> its note card page, starting from the course's subject list.
     setStatus("finding note cards…");
-    const card = {};
+    // Keeps going even when this finds nothing, so a Load course still gets its answer (and reason).
     const subjects = uniq(hrefs(await getDoc(START), "/Content/ContentChapter"));
-    if (!subjects.length) { setStatus("⚠ no subjects here — are you logged in, and is this the course's subject page?"); return; }
     const chapters = uniq((await pool(subjects, 3, async u => hrefs(await getDoc(u), "/Content/DisplayContentType"))).flat());
     const types = uniq((await pool(chapters, 4, async u => hrefs(await getDoc(u), "/Content/DisplayContentCard"))).flat());
     (await pool(types, 4, async u => hrefs(await getDoc(u), "/Content/DisplayContentCardDetails"))).flat().forEach(h => {
@@ -142,6 +158,9 @@
     let sent = 0;
     setStatus(`running · ${cards} note cards · 0 links sent`);
     for (;;) {
+      // Reloading or updating the extension leaves this old copy running in the tab, still able to
+      // reach the app; step aside so the new copy (in a new tab) does the work.
+      if (!chrome.runtime?.id) { setStatus("⚠ replaced by a newer version — this tab can be closed"); return; }
       try {
         const job = await (await fetch(APP + "/api/course/feed/")).json();
         if (job.load) await loadCourse(job);

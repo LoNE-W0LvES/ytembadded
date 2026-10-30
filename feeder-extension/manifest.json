@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Course Library link feeder",
-  "version": "1.9",
+  "version": "1.10",
   "description": "Sends fresh Udvash note and video links to the Course Library app (on this PC or your home network), opening its Udvash tab by itself when the app needs links.",
   "permissions": ["alarms", "storage"],
   "background": { "service_worker": "background.js" },

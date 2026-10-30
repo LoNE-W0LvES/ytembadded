@@ -34,9 +34,11 @@ async function check() {
       await chrome.storage.local.set({ tabId: tab.id, autoOpened: true, revivedAt: Date.now() });
     } else if ((r.feeder_ago == null || r.feeder_ago > 90) && Date.now() - (s.revivedAt || 0) > 120000) {
       // The tab is there but its feeder has gone quiet (e.g. the extension was reloaded, which stops
-      // the copy running in open tabs): load the tab again so a fresh feeder starts in it.
-      await chrome.tabs.update(s.tabId, { url }).catch(() => {});
-      await chrome.storage.local.set({ revivedAt: Date.now() });
+      // the copy running in open tabs): replace the tab so a fresh feeder starts. (Setting the same
+      // address again would only be a #hash change, which doesn't reload the page.)
+      await chrome.tabs.remove(s.tabId).catch(() => {});
+      const tab = await chrome.tabs.create({ url, active: false, pinned: true });
+      await chrome.storage.local.set({ tabId: tab.id, autoOpened: true, revivedAt: Date.now() });
     }
   } else if (!r.needed && open && s.autoOpened) {
     if (!s.idleSince) await chrome.storage.local.set({ idleSince: Date.now() });
