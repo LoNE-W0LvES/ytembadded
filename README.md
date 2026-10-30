@@ -7,9 +7,15 @@ download links from your logged-in Udvash account.
 ## Run
 
 ```powershell
-.\run_library.ps1            # home network (phones, other PCs)
-.\run_library.ps1 -Local     # this PC only
+.\run_library.ps1            # home network: open http://courses.local on phones and other PCs
+.\run_library.ps1 -Local     # this PC only (http://localhost)
+.\run_library.ps1 -Name lib  # announce http://lib.local instead
 ```
+
+On the home network the app announces itself over mDNS, like a microcontroller does, so other
+devices don't need the PC's IP address. It uses port 80 so the address has no `:port`; if another
+program already has port 80 it falls back to 8000 (`http://courses.local:8000`). Most phones and
+PCs open `.local` names; if one doesn't, use the IP address the script prints.
 
 The first run creates `.venv`, installs `requirements.txt`, installs FFmpeg and Node.js with winget
 if they're missing (needed for 720p YouTube downloads) and sets up the database. Later runs just

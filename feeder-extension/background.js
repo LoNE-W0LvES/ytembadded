@@ -1,6 +1,6 @@
 // Opens the link feeder tab by itself when the Course Library app is waiting for Udvash links, and
 // closes a tab it opened once nothing has needed a link for a while. Nothing to set up: it asks the
-// app on this PC (localhost:8000), and the app says which Udvash course page to open.
+// app on this PC (localhost), and the app says which Udvash course page to open.
 const IDLE_CLOSE_MS = 10 * 60 * 1000;
 
 chrome.runtime.onInstalled.addListener(() => chrome.alarms.create("check", { periodInMinutes: 0.5 }));
@@ -17,13 +17,21 @@ async function tabOpen(id) {
   try { await chrome.tabs.get(id); return true; } catch { return false; }
 }
 
+// Where the app may be: the address a feeder tab last reported, else this PC on port 80 (what
+// run_library.ps1 uses when it's free) or 8000.
+async function findApp(saved) {
+  for (const app of [...new Set([saved, "http://localhost", "http://localhost:8000"].filter(Boolean))]) {
+    try { return { app, r: await (await fetch(app + "/api/feeder/wanted/", { cache: "no-store" })).json() }; }
+    catch {}
+  }
+  return null;  // the app isn't running
+}
+
 async function check() {
   const s = await chrome.storage.local.get(["app", "start", "tabId", "autoOpened", "idleSince", "revivedAt"]);
-  // The app on this PC unless a feeder tab has told us another address (an app on another PC).
-  const app = s.app || "http://localhost:8000";
-  let r;
-  try { r = await (await fetch(app + "/api/feeder/wanted/", { cache: "no-store" })).json(); }
-  catch { return; }  // the app isn't running
+  const found = await findApp(s.app);
+  if (!found) return;
+  const { app, r } = found;
   const start = r.start || s.start;  // the app says which Udvash course page to open
   const open = await tabOpen(s.tabId);
   if (r.needed && start) {

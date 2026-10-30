@@ -1,16 +1,19 @@
 # Course Library: sets itself up on first run, then just starts.
 #
-#   .\run_library.ps1            whole home network: phones, other PCs (app_password.txt adds a login)
-#   .\run_library.ps1 -Local     this PC only (http://localhost:8000)
+#   .\run_library.ps1            whole home network: phones and other PCs open http://courses.local
+#                                (app_password.txt adds a login)
+#   .\run_library.ps1 -Local     this PC only (http://localhost)
 #   .\run_library.ps1 -Port 8001 -NoBrowser
+#   .\run_library.ps1 -Name library   other devices open http://library.local (default: courses)
 #
 # First run: creates .venv, installs requirements.txt, FFmpeg and Node.js, and sets up the Chrome extension.
 # Later runs skip all that unless something changed or is missing.
 # If Windows refuses to run scripts:  powershell -ExecutionPolicy Bypass -File .\run_library.ps1
 param(
     [switch]$Local,
-    [int]$Port = 8000,
-    [switch]$NoBrowser
+    [int]$Port = 0,  # 0: 80 (no port in the address) if it's free, else 8000
+    [switch]$NoBrowser,
+    [string]$Name = "courses"  # other devices on the Wi-Fi open http://<Name>.local
 )
 # Not "Stop": Windows PowerShell 5.1 would abort on any warning a program prints. Each step checks
 # its exit code instead.
@@ -111,18 +114,28 @@ Set-Location (Join-Path $PSScriptRoot "web")
 if ($LASTEXITCODE -ne 0) { throw "Database setup failed." }
 
 # 6. Run
+# Port 80 is the one browsers assume, so addresses need no ":port". Another program (IIS, Skype, ...)
+# may already have it; then 8000.
+if ($Port -eq 0) {
+    & $py -c "import socket; s = socket.socket(); s.bind(('0.0.0.0', 80)); s.close()" 2>$null
+    $Port = if ($LASTEXITCODE -eq 0) { 80 } else { 8000 }
+}
+$at = if ($Port -eq 80) { "" } else { ":$Port" }
 if (-not $Local) {
     if (-not (Test-Path (Join-Path $PSScriptRoot "app_password.txt"))) {
         Write-Host "No app_password.txt: anyone on this network can open the app." -ForegroundColor Yellow
     }
     $bind = "0.0.0.0:$Port"
+    $env:COURSEHUB_MDNS = $Name  # the app announces http://<Name>.local on the home network
     Write-Host "Open on other devices:" -ForegroundColor Green
+    Write-Host "   http://${Name}.local$at   (or by address, if a phone can't use .local names:)"
     ipconfig | Select-String "IPv4" | ForEach-Object {
         $ip = ($_.Line -split ":")[-1].Trim()
-        if ($ip -notlike "169.254.*") { Write-Host "   http://${ip}:$Port" }
+        if ($ip -notlike "169.254.*") { Write-Host "   http://${ip}$at" }
     }
 } else {
     $bind = "127.0.0.1:$Port"
+    $env:COURSEHUB_MDNS = ""
 }
-if (-not $NoBrowser) { Start-Process "http://localhost:$Port" }
+if (-not $NoBrowser) { Start-Process "http://localhost$at" }
 & $py manage.py runserver $bind
