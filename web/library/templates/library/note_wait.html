@@ -32,7 +32,7 @@
     } else if (s.state === "queued" && s.needs_link) {
       const live = s.feeder_ago != null && s.feeder_ago < 90;
       msg.textContent = "Getting a fresh download link from Udvash…";
-      sub.textContent = live ? "" : "Waiting for the link feeder — the Chrome extension opens its Udvash tab within about 30 seconds.";
+      sub.textContent = live ? "" : "This can take up to a minute.";
     } else if (s.state === "queued") {
       msg.textContent = "Starting download…";
     } else if (s.state === "failed") {

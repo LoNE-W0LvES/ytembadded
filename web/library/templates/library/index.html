@@ -5,6 +5,8 @@
   .course form { display:flex; gap:8px; flex-wrap:wrap; }
   .course input { flex:1; min-width:220px; }
   .course .line { margin-top:6px; }
+  .course [hidden] { display:none; }
+  #accountLine { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .stats { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
   .stats .card { padding:10px 14px; min-width:120px; }
   .stats b { display:block; font-size:20px; }
@@ -72,11 +74,21 @@
   </form>
   <div class="line muted" id="courseMsg"></div>
   <div class="line muted" id="sysStatus"></div>
+  <!-- The Udvash account the app logs in with. The password is sent once and never shown again. -->
+  <form id="accountForm" class="line" {% if udvash.configured %}hidden{% endif %} autocomplete="off">
+    <input id="udvashId" type="tel" placeholder="Udvash registration no. or mobile number" autocomplete="off">
+    <input id="udvashPw" type="password" placeholder="Udvash password" autocomplete="new-password">
+    <button class="btn primary">Save login</button>
+  </form>
+  <div class="line" id="accountLine" {% if not udvash.configured %}hidden{% endif %}>
+    <span class="muted">Udvash account <b id="udvashUser">{{ udvash.user }}</b></span>
+    <button type="button" class="btn" id="accountChange">Change</button>
+    <button type="button" class="btn" id="accountForget">Forget</button>
+  </div>
 </div>
 {% if not lectures and not f.q and not f.subject and not f.type and not f.status %}
-<div class="card" style="text-align:center;margin-bottom:14px">No lectures yet — paste the course link above and press <b>⟳ Load course</b>.
-  It needs the “Course Library link feeder” Chrome extension (chrome://extensions → Developer mode → Load unpacked →
-  <code>{{ feeder_ext_dir }}</code>) and Chrome logged in to Udvash on the app's PC.</div>
+<div class="card" style="text-align:center;margin-bottom:14px">No lectures yet:
+  {% if not udvash.configured %}save your Udvash login above, then {% endif %}paste the course link and press <b>⟳ Load course</b>.</div>
 {% endif %}
 <div class="stats">
   <div class="card"><span class="muted">🎬 Videos downloaded</span><b><span id="statDone">{{ done }}</span> / <span id="videoTotal">{{ video_total }}</span></b>
@@ -301,7 +313,7 @@
   let courseWas = null;
   function renderCourse(c) {
     const busy = c.pending || c.running;
-    if (c.pending) courseMsg.textContent = "Waiting for the link feeder to open its Udvash tab (about 30 seconds)…";
+    if (c.pending) courseMsg.textContent = "Connecting to Udvash…";
     else if (c.running) courseMsg.textContent = `Reading the course from Udvash… ${c.done_types} of ${c.total_types || "?"} class lists`
       + ` · ${c.cards} lectures (${c.added} new)`;
     else if (c.error) courseMsg.textContent = "Loading the course failed: " + c.error;
@@ -321,12 +333,37 @@
     poll();
   };
 
-  // The link feeder at a glance (it runs in Chrome on the app's PC).
+  // The app's Udvash connection at a glance (its hidden browser, or the Chrome extension without a saved login).
   function renderSys(d) {
-    const ago = d.feeder_ago;
+    const u = d.udvash, ago = d.feeder_ago, live = ago != null && ago < 90;
     document.getElementById("sysStatus").textContent =
-      ago != null && ago < 90 ? "🔗 Link feeder connected" : "🔗 Link feeder idle (opens by itself when needed)";
+      !u.configured ? (live ? "🔗 Udvash: connected through the Chrome extension" : "🔗 Udvash: save your login to connect")
+      : u.status === "error" ? "⚠ Udvash: " + u.error
+      : u.status === "logging in" ? "🔗 Udvash: logging in…"
+      : u.status === "starting" ? "🔗 Udvash: starting…"
+      : u.status === "connected" ? (live ? "🔗 Udvash: connected" : "🔗 Udvash: opening the course…")
+      : "🔗 Udvash: idle (connects by itself when needed)";
+    document.getElementById("udvashUser").textContent = u.user;
   }
+
+  // Udvash login: saved on the app's PC only.
+  const accountForm = document.getElementById("accountForm"), accountLine = document.getElementById("accountLine");
+  accountForm.onsubmit = async e => {
+    e.preventDefault();
+    const pw = document.getElementById("udvashPw");
+    const r = await post("{% url 'api_udvash' %}", { identifier: document.getElementById("udvashId").value, password: pw.value });
+    pw.value = "";
+    if (r.error) { document.getElementById("sysStatus").textContent = "⚠ " + r.error; return; }
+    accountForm.hidden = true; accountLine.hidden = false;
+    renderSys({ udvash: r, feeder_ago: null });
+    poll();
+  };
+  document.getElementById("accountChange").onclick = () => { accountForm.hidden = false; accountLine.hidden = true; };
+  document.getElementById("accountForget").onclick = async () => {
+    await post("{% url 'api_udvash' %}", { forget: true });
+    accountForm.hidden = false; accountLine.hidden = true;
+    poll();
+  };
 
   async function poll() {
     clearTimeout(timer);

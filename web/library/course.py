@@ -24,7 +24,8 @@ COURSE_FILE = settings.BASE_DIR / "course.json"
 PORTAL = "https://online.udvash-unmesh.com"
 _lock = threading.Lock()
 state = {"pending": False, "running": False, "asked": 0.0, "heard": 0.0, "cards": 0, "added": 0,
-         "updated": 0, "done_types": 0, "total_types": 0, "finished": 0.0, "error": ""}
+         "updated": 0, "done_types": 0, "total_types": 0, "finished": 0.0, "error": "",
+         "course": ""}  # the course the running load reads: its cards belong to it, even if another load is asked for meanwhile
 _position = [0]  # next course position during a load
 
 
@@ -92,7 +93,7 @@ def job():
     with _lock:
         if not state["pending"]:
             return {"load": False}
-        state.update(pending=False, running=True, heard=time.time())
+        state.update(pending=False, running=True, heard=time.time(), course=current())
     _position[0] = 0
     # YouTube ids don't change, so those lectures are settled. Portal-only ones are read again in
     # case Udvash has put them on YouTube since.
@@ -127,6 +128,8 @@ def _save(item):
     if not content_id:
         return
     _position[0] += 1
+    with _lock:
+        course = state["course"] or current()
     # Content id first: it's what Udvash itself uses for the card. A YouTube id only finds lectures
     # from before content ids were recorded.
     lec = Lecture.objects.filter(content_id=content_id).first() \
@@ -136,7 +139,7 @@ def _save(item):
     if portal_url.startswith("/"):
         portal_url = PORTAL + portal_url
     if lec:
-        changes = {"position": _position[0], "content_id": content_id, "course": current()}
+        changes = {"position": _position[0], "content_id": content_id, "course": course}
         if youtube_id and not lec.youtube_id:
             changes["youtube_id"] = youtube_id
         if portal_url and not lec.portal_url and not lec.youtube_id:
@@ -154,7 +157,7 @@ def _save(item):
         chapter=str(item.get("chapter") or "").strip()[:300],
         class_type=str(item.get("class_type") or "").strip()[:100],
         title=str(item.get("title") or "").strip() or f"Lecture {content_id}",
-        youtube_id=youtube_id, portal_url=portal_url, note_url=note_url, content_id=content_id, course=current())
+        youtube_id=youtube_id, portal_url=portal_url, note_url=note_url, content_id=content_id, course=course)
     with _lock:
         state["added"] += 1
 

@@ -6,7 +6,8 @@
 #   .\run_library.ps1 -Port 8001 -NoBrowser
 #   .\run_library.ps1 -Name library   other devices open http://library.local (default: courses)
 #
-# First run: creates .venv, installs requirements.txt, FFmpeg and Node.js, and sets up the Chrome extension.
+# First run: creates .venv, installs requirements.txt, FFmpeg, Node.js and the browser the app logs in
+# to Udvash with. Then save your Udvash login on the main page; no Chrome or extension needed.
 # Later runs skip all that unless something changed or is missing.
 # If Windows refuses to run scripts:  powershell -ExecutionPolicy Bypass -File .\run_library.ps1
 param(
@@ -80,32 +81,16 @@ foreach ($t in $tools) {
 # A fresh install only reaches new programs through PATH; give the app the updated one.
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 
-# 4. Chrome extension (the link feeder). Chrome only takes extensions from outside the Web Store
-# through "Load unpacked", clicked once by hand; this keeps a copy in a fixed folder up to date
-# and opens Chrome's extensions page when there's something to click.
-$extSrc = Join-Path $PSScriptRoot "feeder-extension"
-$extDest = Join-Path $env:LOCALAPPDATA "CourseLibrary\feeder-extension"
-$hashDir = "import hashlib, pathlib, sys; d = pathlib.Path(sys.argv[1]); print(hashlib.sha256(b''.join(f.name.encode() + f.read_bytes() for f in sorted(d.glob('*')) if f.is_file())).hexdigest() if d.exists() else '')"
-$firstInstall = -not (Test-Path (Join-Path $extDest "manifest.json"))
-if ($firstInstall -or (& $py -c $hashDir $extSrc) -ne (& $py -c $hashDir $extDest)) {
-    New-Item -ItemType Directory -Force $extDest | Out-Null
-    Get-ChildItem $extDest -File | Remove-Item -Force  # files dropped from a newer version shouldn't linger
-    Copy-Item (Join-Path $extSrc "*") $extDest -Recurse -Force
-    $extVersion = (Get-Content (Join-Path $extDest "manifest.json") -Raw | ConvertFrom-Json).version
-    $chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-                "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-                "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if ($firstInstall) {
-        Write-Host "Link feeder extension $extVersion is ready to add to Chrome:" -ForegroundColor Cyan
-        Write-Host "  In the Chrome tab that opens: turn on 'Developer mode' (top right), click 'Load unpacked',"
-        Write-Host "  then in the folder window click the address bar, press Ctrl+V and Enter, and 'Select Folder'."
-        Write-Host "  (Its folder, on your clipboard: $extDest)"
-        try { Set-Clipboard -Value $extDest } catch {}
-    } else {
-        Write-Host "Link feeder extension updated to ${extVersion}: click the reload arrow on" -ForegroundColor Cyan
-        Write-Host "  'Course Library link feeder' in the Chrome tab that opens."
-    }
-    if ($chrome -and -not $NoBrowser) { Start-Process $chrome "chrome://extensions" }
+# 4. The hidden browser the app logs in to Udvash with (Playwright's Chromium, about 150 MB, once).
+# Its version goes with the playwright library, so a library update brings a new one.
+$pwStamp = Join-Path $venv "playwright-chromium.txt"
+$pwVersion = & $py -c "from importlib.metadata import version; print(version('playwright'))"
+$pwHave = if (Test-Path $pwStamp) { (Get-Content $pwStamp -Raw).Trim() } else { "" }
+if ($pwVersion -ne $pwHave) {
+    Write-Host "Installing the browser the app uses for Udvash ..." -ForegroundColor Cyan
+    & $py -m playwright install chromium
+    if ($LASTEXITCODE -ne 0) { throw "Installing the browser failed (see above)." }
+    Set-Content $pwStamp $pwVersion
 }
 
 # 5. Database tables (does nothing when they're up to date)

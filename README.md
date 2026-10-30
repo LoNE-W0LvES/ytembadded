@@ -18,23 +18,33 @@ program already has port 80 it falls back to 8000 (`http://courses.local:8000`).
 PCs open `.local` names; if one doesn't, use the IP address the script prints.
 
 The first run creates `.venv`, installs `requirements.txt`, installs FFmpeg and Node.js with winget
-if they're missing (needed for 720p YouTube downloads) and sets up the database. Later runs just
-start the app. You need Python 3.10+ and Chrome. If Windows blocks the script:
+if they're missing (needed for 720p YouTube downloads), installs the browser the app logs in to
+Udvash with and sets up the database. Later runs just
+start the app. You need Python 3.10+. If Windows blocks the script:
 `powershell -ExecutionPolicy Bypass -File .\run_library.ps1`
 
 Put a password in `app_password.txt` (next to the script) to require a login from other devices.
 
-## Link feeder extension
+## Udvash login
 
-`run_library.ps1` sets it up too. On the first run (and whenever the extension changes) it copies
-it to `%LOCALAPPDATA%\CourseLibrary\feeder-extension`, puts that path on the clipboard and opens
-`chrome://extensions`. The first time, turn on **Developer mode**, click **Load unpacked** and paste
-the path; after an update, click the reload arrow on the extension. (Chrome only installs
-extensions from outside the Web Store this way.) Chrome on that PC must be logged in to Udvash.
+On the main page, enter your Udvash registration number (or mobile number) and password once and
+press **Save login**. The app keeps them on the PC it runs on (`web/udvash_login.json`, not in git)
+and never shows the password again. Whenever it needs something from Udvash (a course load, fresh
+note or video links) it logs in with a hidden browser (Playwright's Chromium, which
+`run_library.ps1` installs) and closes it again when idle. No Chrome or extension needed on any PC.
 
-It opens a pinned Udvash tab by itself whenever the app needs links, and closes it when idle.
+If Udvash rejects the login, the app shows Udvash's message and doesn't retry until you save the
+login again, so a typo can't lock the account. Logging in from the app may sign out your other
+Udvash sessions.
 
 ## Load a course
 
 On the main page, paste a link from any page of the course on Udvash and press **⟳ Load course**.
-The extension reads the course's subjects, chapters and lecture cards and sends them to the app.
+The app reads the course's subjects, chapters and lecture cards from Udvash.
+
+## Chrome extension (optional)
+
+`feeder-extension/` is the older way to reach Udvash: a Chrome extension that does the same work in
+a logged-in Chrome tab. The app's hidden browser runs the same `feeder.js`. Without a saved login
+the app still accepts links from the extension (install it with **Load unpacked** on
+`chrome://extensions`); with one, the extension stays idle.

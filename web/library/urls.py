@@ -7,6 +7,7 @@ urlpatterns = [
     path("login/", auth.login, name="login"),
     path("api/course/", views.api_course, name="api_course"),
     path("api/course/load/", views.api_course_load, name="api_course_load"),
+    path("api/udvash/", views.api_udvash, name="api_udvash"),
     path("api/course/feed/", views.api_course_feed, name="api_course_feed"),
     path("api/downloads/action/", views.api_downloads_action, name="api_downloads_action"),
     path("api/limits/", views.api_limits, name="api_limits"),

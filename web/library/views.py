@@ -12,7 +12,7 @@ from django.utils.http import content_disposition_header
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from . import course, downloader, to_device
+from . import course, downloader, portal, to_device
 from .importer import sync_files
 from .models import Lecture
 
@@ -51,7 +51,7 @@ def index(request):
         "course_id": course.current(),
         "pdf_saved": sum(lec.pdf_saved for lec in here.exclude(note_url="")),
         "course_start": course.start_url(),
-        "feeder_ext_dir": settings.BASE_DIR.parent / "feeder-extension",
+        "udvash": portal.status(),
     })
 
 
@@ -361,10 +361,9 @@ def _pick_working(url_lists):
 
 def api_feeder_wanted(request):
     """For the feeder extension's background part: should the Udvash feeder tab be open right now?
-    Only a yes/no, so any origin may ask (the extension calls it from its own origin)."""
-    needed = (course.wanted() or bool(downloader.downloads_snapshot()["needs_link"]) or to_device.waiting_for_links()
-              or any(not downloader._video_link_ok(lec)
-                     for lec in Lecture.objects.filter(status="queued", youtube_id="").exclude(portal_url="")))
+    Only a yes/no, so any origin may ask (the extension calls it from its own origin). Never while
+    the app's own browser has a Udvash account: then it does the work."""
+    needed = not portal.configured() and portal.needed()
     seen = downloader.feeder["last_seen"]
     resp = JsonResponse({"needed": needed, "start": course.start_url(),
                          "feeder_ago": round(time.time() - seen) if seen else None})
@@ -442,7 +441,23 @@ def api_course_load(request):
         course.request_load(json.loads(request.body or "{}").get("url", ""))
     except ValueError as e:
         return JsonResponse({"error": str(e)}, status=400)
+    portal.wake()
     return JsonResponse(course.status())
+
+
+@require_POST
+def api_udvash(request):
+    """The Udvash account the app's browser logs in with: save ({identifier, password}) or forget
+    ({forget: true}). The password is only ever written to udvash_login.json, never sent back."""
+    data = json.loads(request.body or "{}")
+    if data.get("forget"):
+        portal.forget_account()
+    else:
+        try:
+            portal.save_account(str(data.get("identifier") or ""), str(data.get("password") or ""))
+        except ValueError as e:
+            return JsonResponse({"error": str(e)}, status=400)
+    return JsonResponse(portal.status())
 
 
 def api_course(request):
@@ -479,4 +494,5 @@ def api_status(request):
         "course_id": course.current(),
         "feeder_ago": round(time.time() - downloader.feeder["last_seen"]) if downloader.feeder["last_seen"] else None,
         "course": course.status(),
+        "udvash": portal.status(),
     })

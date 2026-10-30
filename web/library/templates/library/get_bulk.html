@@ -69,7 +69,7 @@
       }
       if (s.state === "failed") { it.state = "failed"; it.note = s.error || "failed"; render(); return; }
       it.note = s.state === "link" ? (s.feeder_ago != null && s.feeder_ago < 90 ? "getting a fresh Udvash link…"
-                                                                              : "waiting for the link feeder on the app's PC…")
+                                                                              : "getting a fresh link from Udvash…")
               : s.state === "resolving" ? "getting the YouTube link…"
               : s.state === "preparing" ? `preparing on the app's PC ${s.pct || 0}%${s.speed ? " · " + s.speed : ""}` : s.state;
       render();

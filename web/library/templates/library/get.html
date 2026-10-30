@@ -43,7 +43,7 @@
       const live = s.feeder_ago != null && s.feeder_ago < 90;
       msg.textContent = "Getting a fresh download link from Udvash…";
       bar.style.width = "5%";
-      sub.textContent = live ? "" : "Waiting for the link feeder — the Chrome extension on the app's PC opens its Udvash tab within about 30 seconds.";
+      sub.textContent = live ? "" : "This can take up to a minute.";
     } else if (s.state === "preparing") {
       msg.textContent = "Preparing the video on the app's PC…";
       bar.style.width = (s.pct || 2) + "%";

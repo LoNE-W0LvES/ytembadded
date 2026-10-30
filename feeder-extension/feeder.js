@@ -1,5 +1,5 @@
-// Link feeder. Runs only in a Udvash tab opened by the Course Library app ("Open link feeder tab"),
-// which adds #coursehub-feeder@<app address> to the URL. Every few seconds it asks the app which PDFs need a fresh
+// Link feeder. Runs in a Udvash page marked #coursehub-feeder@<app address>: the app's own hidden
+// browser (web/library/portal.py) starts it there, or the optional Chrome extension does. Every few seconds it asks the app which PDFs need a fresh
 // signed link, reads those note cards with your logged-in session, and sends the links to the app.
 (() => {
   if (!location.hash.includes("coursehub-feeder")) return;
@@ -11,6 +11,9 @@
   // Tell the extension's background part where the app and this course page are, so it can reopen
   // this tab by itself next time the app needs links (background.js).
   try { chrome.runtime.sendMessage({ feeder: true, app: APP, start: START }); } catch {}
+  // Started by the extension (not the app's browser): it can be reloaded, leaving this copy behind.
+  const viaExtension = !!globalThis.chrome?.runtime?.id;
+  const replaced = () => viaExtension && !globalThis.chrome?.runtime?.id;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const card = {};  // portal content id -> its note card page (filled at start and by Load course)
   const uniq = a => [...new Set(a)];
@@ -101,7 +104,7 @@
       }
       let done = 0;
       for (const list of lists) {
-        if (!chrome.runtime?.id) return;  // the extension was reloaded: the new copy takes over
+        if (replaced()) return;  // the extension was reloaded: the new copy takes over
         const doc = await getDoc(list.href);
         const boxes = [...doc.querySelectorAll(".card")].filter(c => c.querySelector('a[href^="/Content/DisplayContentCardDetails"]'));
         const lectures = (await pool(boxes, 3, async box => {
@@ -160,7 +163,7 @@
     for (;;) {
       // Reloading or updating the extension leaves this old copy running in the tab, still able to
       // reach the app; step aside so the new copy (in a new tab) does the work.
-      if (!chrome.runtime?.id) { setStatus("⚠ replaced by a newer version — this tab can be closed"); return; }
+      if (replaced()) { setStatus("⚠ replaced by a newer version — this tab can be closed"); return; }
       try {
         const job = await (await fetch(APP + "/api/course/feed/")).json();
         if (job.load) await loadCourse(job);

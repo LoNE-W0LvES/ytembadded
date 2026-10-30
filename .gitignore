@@ -15,3 +15,8 @@ drive_token.json
 
 # Downloaded lectures
 downloads/
+
+# The Udvash login and the app browser's session (portal.py)
+web/udvash_login.json
+web/udvash_browser/
+web/db.backup-*.sqlite3
